@@ -7,7 +7,47 @@ from langdetect import detect, LangDetectException
 from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 from Sastrawi.StopWordRemover.StopWordRemoverFactory import StopWordRemoverFactory
 
+# --- Performance Monkey-Patch for Sastrawi ArrayDictionary ---
+from Sastrawi.Dictionary.ArrayDictionary import ArrayDictionary
+
+def _patched_init(self, words=None):
+    self.words = set()
+    if words:
+        self.add_words(words)
+
+def _patched_contains(self, word):
+    if not word or word.strip() == '':
+        return False
+    return word in self.words
+
+def _patched_count(self):
+    return len(self.words)
+
+def _patched_add_words(self, words):
+    clean_words = {w for w in words if w and w.strip() != ''}
+    self.words.update(clean_words)
+
+def _patched_add(self, word):
+    if not word or word.strip() == '':
+        return
+    self.words.add(word)
+
+ArrayDictionary.__init__ = _patched_init
+ArrayDictionary.contains = _patched_contains
+ArrayDictionary.count = _patched_count
+ArrayDictionary.add_words = _patched_add_words
+ArrayDictionary.add = _patched_add
+# -------------------------------------------------------------
+
 logger = logging.getLogger(__name__)
+
+# Strong Indonesian words for language detection heuristic
+STRONG_ID_WORDS = {
+    "yg", "dgn", "nya", "jg", "juga", "ini", "itu", "dan", "atau", "untuk",
+    "dengan", "ada", "tidak", "bisa", "aja", "gak", "ga", "gw", "aku",
+    "kamu", "saya", "kalian", "kita", "mereka", "dia", "udah", "sudah",
+    "jadi", "sih", "deh", "nih", "lah", "dong", "banget", "bgt"
+}
 
 # Fallback normalization dictionary (offline safety)
 DEFAULT_KAMUS_BAKU = {
@@ -134,11 +174,18 @@ class TextPreprocessor:
         """Heuristic and package-based language checking.
         
         Treated as Indonesian if the text contains fewer than 3 words,
+        or if it contains at least 2 strong Indonesian words (fast-path),
         or if langdetect categorizes it as 'id'.
         """
         words = text.split()
         if len(words) < 3:
             return True
+            
+        # Fast path heuristic to bypass slow langdetect for obvious Indonesian texts
+        id_words_count = sum(1 for w in words if w in STRONG_ID_WORDS)
+        if id_words_count >= 2:
+            return True
+            
         try:
             return detect(text) == "id"
         except LangDetectException:
