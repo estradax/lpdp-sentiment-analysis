@@ -1,8 +1,14 @@
 import os
+import sys
 import logging
 from typing import Dict, Any, Union, List
 import joblib
 import pandas as pd
+
+# Add the project root directory to python path if executing as a script directly
+if __name__ == "__main__" and __package__ is None:
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from src.preprocessing import TextPreprocessor
 
 logger = logging.getLogger(__name__)
