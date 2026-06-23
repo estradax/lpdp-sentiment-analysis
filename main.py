@@ -88,9 +88,9 @@ def run_pipeline(
     labeler = LexiconLabeler()
     
     # Compute scores and classes
-    df[["Score", "label"]] = df["processed_text"].apply(
-        lambda t: pd.Series(labeler.label_sentiment(t))
-    )
+    lexicon_results = [labeler.label_sentiment(t) for t in df["processed_text"]]
+    df["Score"] = [r[0] for r in lexicon_results]
+    df["label"] = [r[1] for r in lexicon_results]
     
     # Print label distribution
     dist = df["label"].value_counts()

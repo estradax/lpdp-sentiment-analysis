@@ -209,7 +209,7 @@ def train_pipeline(
         }
         rf_tuning = RandomForestClassifier(
             class_weight="balanced_subsample",
-            n_jobs=-1,
+            n_jobs=None,
             random_state=random_state,
         )
         search = RandomizedSearchCV(
