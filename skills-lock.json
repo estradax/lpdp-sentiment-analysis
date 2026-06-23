@@ -7,6 +7,12 @@
       "skillPath": "plugins/python-development/skills/python-design-patterns/SKILL.md",
       "computedHash": "593f109cffd8f81019e364102ee239053c7f4477c8ad901b9551fc4afaf22bd0"
     },
+    "python-performance": {
+      "source": "athola/claude-night-market",
+      "sourceType": "github",
+      "skillPath": "plugins/parseltongue/skills/python-performance/SKILL.md",
+      "computedHash": "fe1318206c5c156ea71bfbd1a511bc40d336a4dc7466981173c62b12e95a83ec"
+    },
     "senior-data-scientist": {
       "source": "alirezarezvani/claude-skills",
       "sourceType": "github",
