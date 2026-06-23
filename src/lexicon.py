@@ -128,7 +128,10 @@ class LexiconLabeler:
             "warganet": 0, "bapak": 0, "ibu": 0, "orang": 0, "orangtua": 0, "keluarga": 0,
             "tahun": 0, "bulan": 0, "hari": 0, "jam": 0, "tanggal": 0, "juni": 0, "juli": 0,
             "waktu": 0, "kali": 0, "dulu": 0, "sekarang": 0, "nanti": 0, "besok": 0,
-            "kemarin": 0, "lusa": 0, "info": 0, "bilang": 0, "lanjut": 0, "akhir": 0, "batas": 0
+            "kemarin": 0, "lusa": 0, "info": 0, "bilang": 0, "lanjut": 0, "akhir": 0, "batas": 0,
+            "sedia": 0, "lengkap": 0, "resmi": 0, "buka": 0, "banyak": 0, "proses": 0, "sangat": 0,
+            "sering": 0, "pemberitahuan": 0, "jelas": 0, "dokumen": 0, "admin": 0, "adminnya": 0,
+            "ubah": 0, "berubah": 0, "pelamar": 0, "lamar": 0, "birokrasi": 0
         }
         
         logger.info(f"Applying {len(lexicon_overrides)} custom lexicon overrides...")

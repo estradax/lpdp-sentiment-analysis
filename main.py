@@ -120,9 +120,20 @@ def run_pipeline(
         try:
             predictor = SentimentPredictor(model_dir=model_dir)
             test_sentences = [
-                "Alhamdulillah akhirnya lolos LPDP! Bangga banget, programnya bener-bener membantu anak bangsa buat lanjut S2.",
-                "Proses seleksi LPDP mengecewakan, syaratnya ribet banget dan sering berubah tanpa info yang jelas.",
-                "LPDP membuka pendaftaran beasiswa reguler tahun ini dengan kuota 4000 awardee. Batas akhir pendaftaran adalah 30 Juni."
+                # ── Contoh 1 : Sentimen Positif ──────────────────────────
+                "Alhamdulillah akhirnya lolos LPDP! Bangga banget, "
+                "programnya bener-bener membantu anak bangsa buat lanjut S2 ke luar negeri. "
+                "Terima kasih LPDP, semangat buat yang masih berjuang!",
+
+                # ── Contoh 2 : Sentimen Negatif ──────────────────────────
+                "Proses seleksi LPDP sangat mengecewakan, dokumen adminnya ribet banget "
+                "dan syaratnya sering berubah tanpa pemberitahuan yang jelas. "
+                "Banyak pelamar berprestasi yang gagal hanya karena birokrasi amburadul.",
+
+                # ── Contoh 3 : Sentimen Netral ───────────────────────────
+                "LPDP membuka pendaftaran beasiswa reguler dalam negeri dan luar negeri. "
+                "Kuota yang tersedia tahun ini sebanyak 4.000 awardee. "
+                "Batas waktu pendaftaran adalah 30 Juni, persyaratan lengkap di web resmi LPDP.",
             ]
             
             logger.info("=" * 60)
