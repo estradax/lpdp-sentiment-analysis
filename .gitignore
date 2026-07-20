@@ -11,5 +11,7 @@ wheels/
 
 # Saved models and reports
 saved_model/
+saved_model_indobert/
+bert_checkpoints/
 reports/
 
