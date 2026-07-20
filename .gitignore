@@ -11,6 +11,7 @@ wheels/
 
 # Saved models and reports
 weights/
+weights.zip
 bert_checkpoints/
 reports/
 
