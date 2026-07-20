@@ -149,6 +149,7 @@ class LexiconLabeler:
             
     def label_sentiment(self, text: str) -> Tuple[int, str]:
         """Calculates the sentiment score and determines the label class.
+        Handles simple negations (e.g. 'tidak kecewa' -> Positif).
         
         Args:
             text: A preprocessed string of text.
@@ -162,9 +163,23 @@ class LexiconLabeler:
         score = 0
         words = text.split()
         
+        negate = False
+        negation_words = {"tidak", "gak", "ga", "nggak", "bukan", "kurang", "belum", "pernah"}
+        
         for token in words:
-            score += self.lexicon_pos.get(token, 0)
-            score -= abs(self.lexicon_neg.get(token, 0))
+            if token in negation_words:
+                negate = True
+                continue
+                
+            pos_val = self.lexicon_pos.get(token, 0)
+            neg_val = abs(self.lexicon_neg.get(token, 0))
+            word_score = pos_val - neg_val
+            
+            if word_score != 0:
+                if negate:
+                    word_score = -word_score
+                    negate = False
+                score += word_score
             
         if score > 0:
             return score, "Positif"

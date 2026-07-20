@@ -229,3 +229,18 @@ class TextPreprocessor:
         text_stem = self.stem(text_sw)
         
         return text_stem
+
+    def preprocess_for_bert(self, text: str, filter_lang: bool = True) -> str:
+        """Pipeline RINGAN (filter -> lower -> normalize) TANPA stopword removal & stemming.
+        
+        Mempertahankan struktur kalimat & kata tugas (termasuk negasi seperti 'tidak', 'jangan')
+        karena IndoBERT memanfaatkan konteks urutan kata melalui self-attention.
+        """
+        text_clean = self.filter_text(text)
+        if not text_clean:
+            return ""
+        text_lower = text_clean.lower()
+        if filter_lang and not self.is_indonesian(text_lower):
+            return ""
+        text_norm = self.normalize_words(text_lower)
+        return text_norm.strip()
