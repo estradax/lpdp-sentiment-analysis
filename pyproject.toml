@@ -8,6 +8,7 @@ dependencies = [
     "accelerate>=1.14.0",
     "datasets>=5.0.0",
     "evaluate>=0.4.6",
+    "fastapi>=0.139.2",
     "joblib>=1.5.3",
     "langdetect>=1.0.9",
     "matplotlib>=3.10.9",
@@ -19,5 +20,6 @@ dependencies = [
     "seaborn>=0.13.2",
     "torch>=2.13.0",
     "transformers>=5.14.1",
+    "uvicorn>=0.51.0",
     "wordcloud>=1.9.6",
 ]
