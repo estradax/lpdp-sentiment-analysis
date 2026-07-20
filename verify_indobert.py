@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 from src.inference import BertSentimentPredictor
 
 def test_inference():
-    model_dir = "saved_model_indobert"
+    model_dir = "weights/indobert"
     if not os.path.exists(model_dir):
         print(f"Error: Model directory '{model_dir}' not found. Please run training first.")
         sys.exit(1)

@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 class SentimentPredictor:
     """Predicts sentiment category of raw Indonesian texts using a trained model."""
     
-    def __init__(self, model_dir: str = "saved_model"):
+    def __init__(self, model_dir: str = "weights/random-forest"):
         """Loads serialized model files and initializes text preprocessor."""
         self.model_dir = model_dir
         
@@ -212,7 +212,7 @@ class SentimentPredictor:
 class BertSentimentPredictor:
     """Predicts sentiment category of raw Indonesian texts using a fine-tuned IndoBERT model."""
     
-    def __init__(self, model_dir: str = "saved_model_indobert", max_length: int = 128):
+    def __init__(self, model_dir: str = "weights/indobert", max_length: int = 128):
         """Loads fine-tuned model and tokenizer."""
         self.model_dir = model_dir
         self.max_length = max_length
@@ -346,8 +346,8 @@ def main():
     parser.add_argument(
         "--model-dir",
         type=str,
-        default="saved_model",
-        help="Directory where model artifacts are saved (default: 'saved_model')"
+        default="weights/random-forest",
+        help="Directory where model artifacts are saved (default: 'weights/random-forest')"
     )
     
     args = parser.parse_args()

@@ -110,7 +110,7 @@ def run_pipeline(
     # ── Step 6: Model Training & Evaluation ─────────────────────
     logger.info(f"Step 6: Training and evaluating {model_type} model...")
     if model_type == "random-forest":
-        model_dir_final = model_dir or "saved_model"
+        model_dir_final = model_dir or "weights/random-forest"
         run_tuning = not skip_tuning
         model, tfidf, le, metadata = train_pipeline(
             df=df,
@@ -120,7 +120,7 @@ def run_pipeline(
             random_state=42
         )
     elif model_type == "indobert":
-        model_dir_final = model_dir or "saved_model_indobert"
+        model_dir_final = model_dir or "weights/indobert"
         model, tokenizer, le, metadata = train_bert_pipeline(
             df=df,
             model_dir=model_dir_final,
@@ -202,7 +202,7 @@ def main():
         "--model-dir",
         type=str,
         default=None,
-        help="Directory to save model artifacts (default: 'saved_model' or 'saved_model_indobert')"
+        help="Directory to save model artifacts (default: 'weights/random-forest' or 'weights/indobert')"
     )
     train_parser.add_argument(
         "--reports-dir",
@@ -250,7 +250,7 @@ def main():
         # Determine model dir dynamically if not provided
         model_dir = args.model_dir
         if model_dir is None:
-            model_dir = "saved_model" if args.model == "random-forest" else "saved_model_indobert"
+            model_dir = "weights/random-forest" if args.model == "random-forest" else "weights/indobert"
             
         try:
             if args.model == "random-forest":

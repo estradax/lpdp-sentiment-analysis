@@ -10,8 +10,7 @@ wheels/
 .venv
 
 # Saved models and reports
-saved_model/
-saved_model_indobert/
+weights/
 bert_checkpoints/
 reports/
 

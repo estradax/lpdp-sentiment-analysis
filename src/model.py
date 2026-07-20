@@ -133,7 +133,7 @@ def save_feature_importances(
 
 def train_pipeline(
     df: pd.DataFrame,
-    model_dir: str = "saved_model",
+    model_dir: str = "weights/random-forest",
     reports_dir: str = "reports",
     run_tuning: bool = True,
     random_state: int = 42
@@ -379,7 +379,7 @@ class CustomTrainer(Trainer):
 
 def train_bert_pipeline(
     df: pd.DataFrame,
-    model_dir: str = "saved_model_indobert",
+    model_dir: str = "weights/indobert",
     reports_dir: str = "reports",
     random_state: int = 42
 ) -> Tuple[Any, Any, Any, Dict[str, Any]]:
