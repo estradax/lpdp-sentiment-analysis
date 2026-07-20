@@ -6,6 +6,9 @@ import joblib
 import pandas as pd
 import numpy as np
 
+import torch
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+
 # Add the project root directory to python path if executing as a script directly
 if __name__ == "__main__" and __package__ is None:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -182,6 +185,110 @@ class SentimentPredictor:
         for res in results:
             if res is None:
                 continue
+            row = {
+                "text_original": res["text_original"],
+                "text_preprocessed": res["text_preprocessed"],
+                "sentiment": res["sentiment"],
+                "confidence": res["confidence"],
+            }
+            for cls, prob in res["probabilities"].items():
+                row[f"prob_{cls}"] = prob
+            flat_results.append(row)
+            
+        return pd.DataFrame(flat_results)
+
+    def _empty_result(self, original_text: str) -> Dict[str, Any]:
+        """Utility function for mapping empty or cleaned-out text."""
+        classes = self.label_encoder.classes_
+        return {
+            "text_original": original_text,
+            "text_preprocessed": "",
+            "sentiment": "Netral",
+            "confidence": 0.0,
+            "probabilities": {str(cls): 0.0 for cls in classes},
+        }
+
+
+class BertSentimentPredictor:
+    """Predicts sentiment category of raw Indonesian texts using a fine-tuned IndoBERT model."""
+    
+    def __init__(self, model_dir: str = "saved_model_indobert", max_length: int = 128):
+        """Loads fine-tuned model and tokenizer."""
+        self.model_dir = model_dir
+        self.max_length = max_length
+        
+        best_model_path = os.path.join(model_dir, "model.safetensors")
+        # Check pytorch model bin just in case it was saved in old format
+        pytorch_model_path = os.path.join(model_dir, "pytorch_model.bin")
+        le_path = os.path.join(model_dir, "label_encoder.pkl")
+        
+        if not (os.path.exists(best_model_path) or os.path.exists(pytorch_model_path)) or not os.path.exists(le_path):
+            raise FileNotFoundError(
+                f"BERT Model artifacts not found in {model_dir}. Please run fine-tuning pipeline first."
+            )
+            
+        logger.info(f"Loading BERT model and tokenizer from {model_dir}...")
+        self.device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
+        logger.info(f"Inference device: {self.device}")
+        
+        self.tokenizer = AutoTokenizer.from_pretrained(model_dir)
+        self.model = AutoModelForSequenceClassification.from_pretrained(model_dir)
+        self.model.to(self.device)
+        self.model.eval()
+        
+        self.label_encoder = joblib.load(le_path)
+        self.preprocessor = TextPreprocessor()
+        logger.info("BertSentimentPredictor is ready.")
+
+    def predict(self, text: str) -> Dict[str, Any]:
+        """Predicts sentiment for a single input string using BERT."""
+        if not isinstance(text, str) or not text.strip():
+            return self._empty_result(text)
+            
+        # Clean and preprocess text lightweight (no stopword removal / stemming)
+        clean_text = self.preprocessor.preprocess_for_bert(text, filter_lang=False)
+        
+        if not clean_text.strip():
+            return self._empty_result(text)
+            
+        inputs = self.tokenizer(
+            clean_text,
+            return_tensors="pt",
+            truncation=True,
+            padding=True,
+            max_length=self.max_length,
+        ).to(self.device)
+        
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+            probs = torch.softmax(outputs.logits, dim=-1).cpu().numpy()[0]
+            
+        classes = self.label_encoder.classes_
+        pred_idx = int(np.argmax(probs))
+        pred_label = classes[pred_idx]
+        
+        prob_detail = {
+            str(cls): round(float(p), 4)
+            for cls, p in zip(classes, probs)
+        }
+        
+        return {
+            "text_original": text,
+            "text_preprocessed": clean_text,
+            "sentiment": str(pred_label),
+            "confidence": round(float(probs.max()), 4),
+            "probabilities": prob_detail,
+        }
+
+    def predict_batch(self, texts: List[str]) -> pd.DataFrame:
+        """Batch predicts a list of texts using BERT and returns a DataFrame."""
+        logger.info(f"Batch predicting {len(texts)} texts using BERT...")
+        results = []
+        for text in texts:
+            results.append(self.predict(text))
+            
+        flat_results = []
+        for res in results:
             row = {
                 "text_original": res["text_original"],
                 "text_preprocessed": res["text_preprocessed"],

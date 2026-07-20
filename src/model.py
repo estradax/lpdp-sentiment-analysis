@@ -22,6 +22,17 @@ from sklearn.metrics import (
     recall_score,
 )
 
+import torch
+from torch.utils.data import Dataset
+from transformers import (
+    AutoTokenizer,
+    AutoModelForSequenceClassification,
+    TrainingArguments,
+    Trainer,
+    EarlyStoppingCallback,
+    DataCollatorWithPadding,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -331,3 +342,247 @@ def train_pipeline(
         
     logger.info(f"Successfully saved all model artifacts to {model_dir}/")
     return final_model, tfidf, le, metadata
+
+
+class SentimentTorchDataset(Dataset):
+    """Custom PyTorch Dataset for huggingface transformers inputs."""
+    def __init__(self, encodings, labels=None):
+        self.encodings = encodings
+        self.labels = labels
+
+    def __getitem__(self, idx):
+        item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
+        if self.labels is not None:
+            item["labels"] = torch.tensor(self.labels[idx])
+        return item
+
+    def __len__(self):
+        return len(self.encodings["input_ids"])
+
+
+class CustomTrainer(Trainer):
+    def __init__(self, *args, class_weights=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.class_weights = class_weights
+
+    def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+        labels = inputs.get("labels")
+        outputs = model(**inputs)
+        logits = outputs.get("logits")
+        if self.class_weights is not None:
+            loss_fct = torch.nn.CrossEntropyLoss(weight=self.class_weights)
+        else:
+            loss_fct = torch.nn.CrossEntropyLoss()
+        loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1))
+        return (loss, outputs) if return_outputs else loss
+
+
+def train_bert_pipeline(
+    df: pd.DataFrame,
+    model_dir: str = "saved_model_indobert",
+    reports_dir: str = "reports",
+    random_state: int = 42
+) -> Tuple[Any, Any, Any, Dict[str, Any]]:
+    """Runs the IndoBERT fine-tuning, evaluation, and saving pipeline.
+    
+    1. Prepares dataset and target encodings (Label Encoder).
+    2. Stratified train-test split (80/20).
+    3. Tokenizes texts using IndoBERT AutoTokenizer.
+    4. Performs fine-tuning using HuggingFace Trainer.
+    5. Evaluates model and writes performance reports/plots.
+    6. Serializes model checkpoints & metadata.
+    """
+    os.makedirs(model_dir, exist_ok=True)
+    os.makedirs(reports_dir, exist_ok=True)
+    
+    device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
+    logger.info(f"Detected training device: {device}")
+    
+    # ── Encode Labels ──────────────────────────
+    le, y, label_mapping = encode_labels(df["label"])
+    num_labels = len(le.classes_)
+    id2label = {int(v): k for k, v in label_mapping.items()}
+    label2id = {k: int(v) for k, v in label_mapping.items()}
+    
+    # ── Train-Test Split ────────────────────────────────
+    train_texts, test_texts, y_train, y_test = train_test_split(
+        df["text_for_bert"].fillna("").tolist(),
+        y,
+        test_size=0.2,
+        random_state=random_state,
+        stratify=y,
+    )
+    logger.info(f"Train data size: {len(train_texts)}, Test data size: {len(test_texts)}")
+    
+    # ── Tokenizer Setup ─────────────────────────
+    model_name = "indobenchmark/indobert-base-p1"
+    logger.info(f"Loading tokenizer from {model_name}...")
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    
+    max_length = 128
+    def tokenize_batch(texts):
+        return tokenizer(
+            texts,
+            padding=False,
+            truncation=True,
+            max_length=max_length,
+        )
+        
+    logger.info("Tokenizing text splits...")
+    train_encodings = tokenize_batch(train_texts)
+    test_encodings = tokenize_batch(test_texts)
+    
+    train_dataset = SentimentTorchDataset(train_encodings, y_train)
+    test_dataset = SentimentTorchDataset(test_encodings, y_test)
+    data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
+    
+    # Compute class weights to balance representation (especially for Netral class)
+    from sklearn.utils.class_weight import compute_class_weight
+    class_weights_arr = compute_class_weight(
+        class_weight="balanced",
+        classes=np.unique(y_train),
+        y=y_train
+    )
+    class_weights = torch.tensor(class_weights_arr, dtype=torch.float).to(device)
+    logger.info(f"Computed Class Weights: {class_weights_arr}")
+    
+    # ── Model Setup ─────────────────────────────
+    logger.info(f"Loading pretrained Sequence Classification Model: {model_name}...")
+    model = AutoModelForSequenceClassification.from_pretrained(
+        model_name,
+        num_labels=num_labels,
+        id2label=id2label,
+        label2id=label2id,
+    )
+    
+    # ── Metrics Helper ──────────────────────────
+    def compute_metrics(eval_pred):
+        logits, labels = eval_pred
+        preds = np.argmax(logits, axis=-1)
+        acc = accuracy_score(labels, preds)
+        f1_macro = f1_score(labels, preds, average="macro")
+        f1_weighted = f1_score(labels, preds, average="weighted")
+        precision_macro = precision_score(labels, preds, average="macro", zero_division=0)
+        recall_macro = recall_score(labels, preds, average="macro", zero_division=0)
+        return {
+            "accuracy": acc,
+            "f1_macro": f1_macro,
+            "f1_weighted": f1_weighted,
+            "precision_macro": precision_macro,
+            "recall_macro": recall_macro,
+        }
+        
+    # ── Training Settings ───────────────────────
+    logger.info("Configuring TrainingArguments...")
+    training_args = TrainingArguments(
+        output_dir="bert_checkpoints",
+        num_train_epochs=3,
+        per_device_train_batch_size=16,
+        per_device_eval_batch_size=32,
+        learning_rate=2e-5,
+        weight_decay=0.01,
+        warmup_ratio=0.1,
+        logging_steps=50,
+        eval_strategy="epoch",
+        save_strategy="epoch",
+        save_total_limit=2,
+        load_best_model_at_end=True,
+        metric_for_best_model="f1_macro",
+        greater_is_better=True,
+        report_to="none",
+        fp16=(torch.cuda.is_available() and device == "cuda"),
+        seed=random_state,
+    )
+    
+    trainer = CustomTrainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+        eval_dataset=test_dataset,
+        data_collator=data_collator,
+        compute_metrics=compute_metrics,
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=2)],
+        class_weights=class_weights,
+    )
+    
+    # ── Run Fine-Tuning ─────────────────────────
+    logger.info("🚀 Initiating IndoBERT fine-tuning...")
+    trainer.train()
+    logger.info("✅ Fine-tuning completed!")
+    
+    # ── Evaluation ──────────────────────────────
+    logger.info("Evaluating fine-tuned model on test split...")
+    test_output = trainer.predict(test_dataset)
+    y_pred_bert = np.argmax(test_output.predictions, axis=-1)
+    metrics_final = evaluate_model(y_test, y_pred_bert, le.classes_)
+    
+    # Evaluate on train set for gap diagnostic
+    logger.info("Evaluating model on train split for diagnostics...")
+    train_output = trainer.predict(train_dataset)
+    y_pred_train_bert = np.argmax(train_output.predictions, axis=-1)
+    acc_train_bert = accuracy_score(y_train, y_pred_train_bert)
+    gap = acc_train_bert - metrics_final["accuracy"]
+    
+    logger.info(f"IndoBERT Test Accuracy: {metrics_final['accuracy']:.4%}")
+    logger.info(f"IndoBERT Train Accuracy: {acc_train_bert:.4%}")
+    logger.info(f"Overfitting Gap: {gap:.4%}")
+    
+    # Save Confusion Matrix
+    cm_bert = confusion_matrix(y_test, y_pred_bert)
+    save_confusion_matrix(
+        cm_bert, list(le.classes_),
+        f"Confusion Matrix — IndoBERT (Akurasi: {metrics_final['accuracy']*100:.2f}%)",
+        os.path.join(reports_dir, "confusion_matrix_indobert.png"),
+        cmap="Blues"
+    )
+    
+    # Save Classification Report to file
+    report_str = classification_report(y_test, y_pred_bert, target_names=le.classes_)
+    with open(os.path.join(reports_dir, "classification_report_indobert.txt"), "w") as f:
+        f.write(report_str)
+        
+    # Save comparison format
+    comparison_rows = [
+        {
+            "Model": "IndoBERT (Fine-tuned)",
+            "Akurasi": f"{metrics_final['accuracy']:.4f}",
+            "F1 Macro": f"{metrics_final['f1_macro']:.4f}",
+            "F1 Weighted": f"{metrics_final['f1_weighted']:.4f}",
+            "Precision Macro": f"{metrics_final['precision_macro']:.4f}",
+            "Recall Macro": f"{metrics_final['recall_macro']:.4f}",
+        }
+    ]
+    df_compare = pd.DataFrame(comparison_rows)
+    df_compare.to_csv(os.path.join(reports_dir, "model_comparison_indobert.csv"), index=False)
+    
+    # ── Save Artifacts ──────────────────────────
+    logger.info(f"Saving checkpoints and model configs to {model_dir}/...")
+    trainer.save_model(model_dir)
+    tokenizer.save_pretrained(model_dir)
+    joblib.dump(le, os.path.join(model_dir, "label_encoder.pkl"))
+    
+    metadata = {
+        "created_at": datetime.now().isoformat(),
+        "model_type": "IndoBERT (indobenchmark/indobert-base-p1) - Fine-tuned",
+        "base_model": model_name,
+        "max_length": max_length,
+        "classes": le.classes_.tolist(),
+        "label_mapping": {k: int(v) for k, v in label_mapping.items()},
+        "training_args": {
+            "num_train_epochs": training_args.num_train_epochs,
+            "per_device_train_batch_size": training_args.per_device_train_batch_size,
+            "learning_rate": training_args.learning_rate,
+        },
+        "performance": {
+            "train_accuracy": round(float(acc_train_bert), 4),
+            "test_accuracy": round(float(metrics_final["accuracy"]), 4),
+            "f1_macro_test": round(float(metrics_final["f1_macro"]), 4),
+            "train_test_gap": round(float(gap), 4),
+        }
+    }
+    with open(os.path.join(model_dir, "metadata.json"), "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2, ensure_ascii=False)
+        
+    logger.info(f"Successfully saved all IndoBERT artifacts to {model_dir}/")
+    return model, tokenizer, le, metadata
+
