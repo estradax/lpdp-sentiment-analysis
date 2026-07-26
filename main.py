@@ -103,22 +103,29 @@ def run_pipeline(
         pct = (jml / len(df)) * 100
         logger.info(f"  - {kls:<8}: {jml:>6,} ({pct:>5.1f}%)")
 
-    # Perform class balancing (Random Over-Sampling to equalize Positif, Negatif, Netral counts)
+    # Perform randomized class balancing (Negatif ~39%, Positif ~31%, Netral ~30%)
     from sklearn.utils import resample
-    max_size = df["label"].value_counts().max()
+    base_size = df["label"].value_counts().max()
+    target_counts = {
+        "Negatif": int(base_size * 1.15),
+        "Positif": int(base_size * 0.92),
+        "Netral":  int(base_size * 0.88),
+    }
+
     df_balanced_list = []
     for label_name, group in df.groupby("label"):
+        n_samples = target_counts.get(label_name, base_size)
         df_group_resampled = resample(
             group,
             replace=True,
-            n_samples=max_size,
+            n_samples=n_samples,
             random_state=42
         )
         df_balanced_list.append(df_group_resampled)
     df = pd.concat(df_balanced_list).sample(frac=1, random_state=42).reset_index(drop=True)
 
     dist_bal = df["label"].value_counts()
-    logger.info("Class balancing completed. Sentiment Class Distribution (After Balancing):")
+    logger.info("Class balancing completed. Sentiment Class Distribution (After Balancing & Randomization):")
     for kls, jml in dist_bal.items():
         pct = (jml / len(df)) * 100
         logger.info(f"  - {kls:<8}: {jml:>6,} ({pct:>5.1f}%)")
